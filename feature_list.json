@@ -1,0 +1,205 @@
+{
+  "schema_version": 2,
+  "project": "TinyLLM",
+  "status_values": [
+    "planned",
+    "in_progress",
+    "blocked",
+    "complete"
+  ],
+  "resume_policy": {
+    "selection_order": [
+      "in_progress",
+      "blocked",
+      "planned"
+    ],
+    "priority_rule": "Lower numeric priority values are handled first.",
+    "dependency_rule": "Do not start a planned feature until all dependencies are complete.",
+    "evidence_rule": "A feature can be marked complete only when evidence contains concrete files, commands, logs, metrics, or generated artifacts."
+  },
+  "features": [
+    {
+      "id": "governance.agent_codex_docs",
+      "name": "Project agent and Codex guidance docs",
+      "category": "governance",
+      "owner_module": "governance",
+      "status": "complete",
+      "priority": 0,
+      "dependencies": [],
+      "docs": [
+        "AGENTS.md",
+        "AGENT.md",
+        "CODEX.md"
+      ],
+      "next_steps": [],
+      "acceptance": [
+        "Provide canonical project-level agent instructions.",
+        "Document deletion safety rules and code boundaries.",
+        "Document project commands, structure, conventions, and working style for Codex.",
+        "Provide a compatibility AGENT.md that points to AGENTS.md."
+      ],
+      "evidence": [
+        "AGENTS.md",
+        "AGENT.md",
+        "CODEX.md"
+      ],
+      "last_updated": "2026-05-18",
+      "notes": "AGENTS.md is canonical; AGENT.md is only a compatibility pointer."
+    },
+    {
+      "id": "data.pretrain_mix_v1",
+      "name": "Pretraining data mix v1",
+      "category": "data",
+      "owner_module": "data",
+      "status": "complete",
+      "priority": 10,
+      "dependencies": [],
+      "docs": [
+        "docs/data/pretrain_mix_v1.md"
+      ],
+      "next_steps": [
+        "Use this mix as input when implementing the pretraining data planner/sampler."
+      ],
+      "acceptance": [
+        "Define a Chinese-priority bilingual token-based pretraining mix whose bucket weights sum to 100.",
+        "Document data rules for cleaned, deduplicated, quality-filtered, tokenized corpus mixing.",
+        "Record stage guidance for broad pretraining, knowledge/reasoning continuation, and long-context continuation.",
+        "Provide a validation script that checks the machine-readable mix configuration."
+      ],
+      "evidence": [
+        "configs/data/pretrain_mix_v1.json",
+        "docs/data/pretrain_mix_v1.md",
+        "scripts/validate_pretrain_mix.py",
+        "python scripts/validate_pretrain_mix.py"
+      ],
+      "last_updated": "2026-05-18",
+      "notes": "First default mix; intended to be adjusted after evaluation results."
+    },
+    {
+      "id": "project.scaffold_python_package",
+      "name": "Python package scaffold",
+      "category": "project",
+      "owner_module": "project",
+      "status": "complete",
+      "priority": 20,
+      "dependencies": [
+        "governance.agent_codex_docs"
+      ],
+      "docs": [
+        "CODEX.md"
+      ],
+      "next_steps": [
+        "Create pyproject.toml for Python 3.11 with pytest and ruff.",
+        "Create src/tinyllm package skeleton.",
+        "Create tests skeleton and a minimal import test.",
+        "Add global validation commands to CODEX.md after they exist."
+      ],
+      "acceptance": [
+        "Project has an installable Python package under src/tinyllm.",
+        "pytest can run at least one minimal test.",
+        "ruff can check the repository without rewriting files.",
+        "CODEX.md documents the new global commands."
+      ],
+      "evidence": [
+        "pyproject.toml",
+        "src/tinyllm/__init__.py",
+        "tests/test_import.py",
+        "python -m pytest",
+        "python -m ruff check ."
+      ],
+      "last_updated": "2026-05-19",
+      "notes": "Installable package scaffold and global validation commands are now present."
+    },
+    {
+      "id": "model.architecture_spec",
+      "name": "Qwen3-like architecture specification",
+      "category": "model",
+      "owner_module": "model",
+      "status": "complete",
+      "priority": 30,
+      "dependencies": [
+        "project.scaffold_python_package"
+      ],
+      "docs": [
+        "docs/model/architecture.md"
+      ],
+      "next_steps": [
+        "Create model architecture documentation for 64M trial and 120M-130M MVP configs.",
+        "Define config fields for RMSNorm, RoPE, GQA, QK norm, SwiGLU, tied embeddings, and context length.",
+        "Record expected parameter-count estimation method."
+      ],
+      "acceptance": [
+        "Architecture doc defines the model family and initial size configs.",
+        "Config fields are precise enough to implement without new design decisions.",
+        "Architecture choices remain HF-compatible."
+      ],
+      "evidence": [
+        "docs/model/architecture.md",
+        "configs/model/tinyllm_64m.json",
+        "configs/model/tinyllm_128m.json",
+        "configs/model/tinyllm_moe_smoke.json",
+        "scripts/validate_model_configs.py",
+        "python scripts/validate_model_configs.py"
+      ],
+      "last_updated": "2026-05-19",
+      "notes": "Architecture spec and initial model configs are now implemented and validated."
+    },
+    {
+      "id": "data.pipeline_spec",
+      "name": "Pretraining data pipeline specification",
+      "category": "data",
+      "owner_module": "data",
+      "status": "planned",
+      "priority": 40,
+      "dependencies": [
+        "data.pretrain_mix_v1",
+        "project.scaffold_python_package"
+      ],
+      "docs": [
+        "docs/data/pipeline.md",
+        "configs/data/pretrain_mix_v1.json"
+      ],
+      "next_steps": [
+        "Document raw input formats, normalized document schema, filtering stages, dedup stages, tokenization, packing, sharding, and manifests.",
+        "Define required metadata fields for provenance, license, cleaning version, token counts, and filter statistics.",
+        "Define validation commands for pipeline configs."
+      ],
+      "acceptance": [
+        "Pipeline spec describes end-to-end data flow from raw documents to tokenized shards.",
+        "Manifest and metadata requirements are explicit.",
+        "The spec references the pretraining mix config without duplicating its content."
+      ],
+      "evidence": [],
+      "last_updated": "2026-05-18",
+      "notes": "Keep data mix details in data docs/configs, not global guidance files."
+    },
+    {
+      "id": "training.pretrain_loop_spec",
+      "name": "Pretraining loop specification",
+      "category": "training",
+      "owner_module": "training",
+      "status": "planned",
+      "priority": 50,
+      "dependencies": [
+        "project.scaffold_python_package",
+        "model.architecture_spec",
+        "data.pipeline_spec"
+      ],
+      "docs": [
+        "docs/training/pretrain_loop.md"
+      ],
+      "next_steps": [
+        "Document training entrypoints, config layout, DDP launch, logging, checkpointing, resume, and smoke tests.",
+        "Define minimum validations for tiny synthetic data and one real mini-shard."
+      ],
+      "acceptance": [
+        "Spec defines the pretraining loop behavior and required commands.",
+        "Checkpoint/resume and logging requirements are explicit.",
+        "Smoke-test criteria are explicit."
+      ],
+      "evidence": [],
+      "last_updated": "2026-05-18",
+      "notes": "Implementation should wait until model and data specs are stable."
+    }
+  ]
+}

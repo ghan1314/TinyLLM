@@ -1,0 +1,6 @@
+name: tinyllm
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip>=24.0
