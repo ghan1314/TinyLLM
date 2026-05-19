@@ -15,7 +15,9 @@ from tinyllm.modeling.configuration import TinyLLMConfig
 class MoEAuxLoss:
     """Auxiliary routing losses emitted by a MoE block."""
 
+    # load_balancing 约束专家使用率，避免路由器长期只选择少数专家。
     load_balancing: Tensor
+    # router_z 是可选的 router logit 稳定项；默认系数为 0，保留接口便于后续打开。
     router_z: Tensor
 
     @property
@@ -48,6 +50,8 @@ class TinyLLMRMSNorm(nn.Module):
 
     def forward(self, hidden_states: Tensor) -> Tensor:
         input_dtype = hidden_states.dtype
+        # RMSNorm 的均方根统计用 float32 计算，避免 fp16/bf16 下方差过小带来的数值抖动。
+        # 输出再转回输入 dtype，便于混合精度训练。
         hidden_states = hidden_states.float()
         variance = hidden_states.pow(2).mean(dim=-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
@@ -59,6 +63,8 @@ class TinyLLMRotaryEmbedding(nn.Module):
 
     def __init__(self, config: TinyLLMConfig) -> None:
         super().__init__()
+        # inv_freq 形状为 [head_dim / 2]，不是可训练参数。RoPE 在 forward 中根据
+        # position_ids 动态生成 cos/sin，因此可以支持任意 batch 的位置编号。
         inv_freq = 1.0 / (
             config.rope_theta
             ** (torch.arange(0, config.head_dim, 2, dtype=torch.float32) / config.head_dim)
@@ -67,18 +73,23 @@ class TinyLLMRotaryEmbedding(nn.Module):
 
     @torch.no_grad()
     def forward(self, position_ids: Tensor) -> tuple[Tensor, Tensor]:
+        # position_ids: [batch, seq_len]；输出 cos/sin: [batch, seq_len, head_dim]。
+        # einsum 将每个位置编号乘以每个频率，得到每个 token 的旋转角。
         freqs = torch.einsum("d,bs->bsd", self.inv_freq.float(), position_ids.float())
         emb = torch.cat((freqs, freqs), dim=-1)
         return emb.cos(), emb.sin()
 
 
 def rotate_half(x: Tensor) -> Tensor:
+    # RoPE 的二维旋转写法：把最后一维拆成两半后做 [-x2, x1]，等价于复数旋转的虚实部交换。
     x1 = x[..., : x.shape[-1] // 2]
     x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)
 
 
 def apply_rotary_pos_emb(q: Tensor, k: Tensor, cos: Tensor, sin: Tensor) -> tuple[Tensor, Tensor]:
+    # q/k: [batch, heads, seq_len, head_dim]；cos/sin: [batch, seq_len, head_dim]。
+    # 在第 1 维补一个 heads 维度后，cos/sin 会广播到所有注意力头。
     cos = cos.unsqueeze(1)
     sin = sin.unsqueeze(1)
     q_embed = (q * cos) + (rotate_half(q) * sin)
@@ -89,6 +100,8 @@ def apply_rotary_pos_emb(q: Tensor, k: Tensor, cos: Tensor, sin: Tensor) -> tupl
 def repeat_kv(hidden_states: Tensor, n_rep: int) -> Tensor:
     if n_rep == 1:
         return hidden_states
+    # GQA/MQA 中 K/V 头数少于 Q 头数。这里把每个 K/V 头复制 n_rep 次，
+    # 让 K/V 的 heads 维度与 query heads 对齐，便于直接调用 SDPA。
     batch, num_key_value_heads, seq_len, head_dim = hidden_states.shape
     hidden_states = hidden_states[:, :, None, :, :].expand(
         batch, num_key_value_heads, n_rep, seq_len, head_dim
@@ -147,10 +160,14 @@ class TinyLLMAttention(nn.Module):
     ) -> Tensor:
         batch_size, seq_len, _ = hidden_states.shape
 
+        # 线性投影后仍是 [batch, seq_len, heads * head_dim] 的扁平形态。
+        # 后面 reshape/transpose 会把 heads 维度显式拆出来。
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
 
+        # SDPA 需要 [batch, heads, seq_len, head_dim]。Q 使用完整 attention heads；
+        # K/V 使用较少的 num_key_value_heads，稍后通过 repeat_kv 扩展。
         query_states = query_states.view(
             batch_size, seq_len, self.num_heads, self.head_dim
         ).transpose(1, 2)
@@ -161,6 +178,8 @@ class TinyLLMAttention(nn.Module):
             batch_size, seq_len, self.num_key_value_heads, self.head_dim
         ).transpose(1, 2)
 
+        # QK norm 先在每个 head 内做 RMSNorm，再应用 RoPE；这是 Qwen 风格骨架中
+        # 提升训练稳定性的关键位置之一。
         query_states = self.q_norm(query_states)
         key_states = self.k_norm(key_states)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
@@ -168,6 +187,9 @@ class TinyLLMAttention(nn.Module):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
+        # attention_mask 是 bool mask，True 表示允许注意力访问。因果约束和 padding
+        # 约束已经在 TinyLLMModel._prepare_attention_mask 中合并，所以这里关闭
+        # is_causal，避免 PyTorch 再叠加一个内部 causal mask。
         attn_output = F.scaled_dot_product_attention(
             query_states,
             key_states,
@@ -176,6 +198,8 @@ class TinyLLMAttention(nn.Module):
             dropout_p=self.attention_dropout if self.training else 0.0,
             is_causal=False,
         )
+        # 从 [batch, heads, seq_len, head_dim] 合并回 [batch, seq_len, hidden_size]，
+        # 这样才能接输出投影和残差连接。
         attn_output = attn_output.transpose(1, 2).contiguous().view(
             batch_size, seq_len, self.hidden_size
         )
@@ -194,6 +218,8 @@ class TinyLLMMLP(nn.Module):
         self.dropout = nn.Dropout(config.resid_dropout)
 
     def forward(self, hidden_states: Tensor) -> Tensor:
+        # SwiGLU 必须让原始 hidden_states 同时经过 gate_proj 和 up_proj。
+        # 不能先覆盖 hidden_states 再送入 up_proj，否则输入维度会变成 intermediate_size。
         gate_states = self.gate_proj(hidden_states)
         hidden_states = F.silu(gate_states) * self.up_proj(hidden_states)
         hidden_states = self.down_proj(hidden_states)
@@ -223,23 +249,32 @@ class TinyLLMMoE(nn.Module):
 
     def forward(self, hidden_states: Tensor) -> tuple[Tensor, MoEAuxLoss]:
         batch_size, seq_len, hidden_size = hidden_states.shape
+        # 路由器按 token 独立选择专家，所以先把 [batch, seq_len, hidden] 展平为
+        # [tokens, hidden]，其中 tokens = batch * seq_len。
         flat_states = hidden_states.reshape(-1, hidden_size)
         router_logits = self.router(flat_states)
+        # router softmax 固定用 float32，避免混合精度下 Top-k 边界概率不稳定。
         routing_weights = F.softmax(router_logits, dim=-1, dtype=torch.float32)
         topk_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
         if self.config.norm_topk_prob:
+            # 归一化后，每个 token 被选中的 top-k 专家权重之和为 1。
             topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True).clamp_min(1e-12)
         topk_weights = topk_weights.to(flat_states.dtype)
 
         final_states = torch.zeros_like(flat_states)
         for expert_idx, expert in enumerate(self.experts):
+            # selected_experts: [tokens, top_k]。where 返回 token 下标和该专家在 top-k
+            # 列表中的位置，用于取出对应路由权重。
             token_idx, expert_position = torch.where(selected_experts == expert_idx)
             if token_idx.numel() == 0:
                 continue
             expert_output = expert(flat_states[token_idx])
             expert_weight = topk_weights[token_idx, expert_position].unsqueeze(-1)
+            # 一个 token 可能路由到多个专家，用 index_add_ 把专家输出按权重累加回原 token。
             final_states.index_add_(0, token_idx, expert_output * expert_weight)
 
+        # 负载均衡项参考 Switch/GShard 思路：同时考虑路由概率质量和实际分配频率。
+        # 当前实现是清晰优先的 smoke 版本，后续大模型训练可替换为更高效的 grouped kernel。
         router_probs = routing_weights.mean(dim=0)
         expert_mask = F.one_hot(selected_experts, num_classes=self.num_experts).float()
         tokens_per_expert = expert_mask.mean(dim=(0, 1))
@@ -278,6 +313,8 @@ class TinyLLMDecoderLayer(nn.Module):
         )
         hidden_states = residual + hidden_states
 
+        # 第二个 pre-norm 分支接 dense MLP 或 MoE。MoE 分支会额外返回 router aux loss，
+        # dense 分支只返回 hidden states。
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         router_aux_loss = None
@@ -302,6 +339,7 @@ class TinyLLMPreTrainedModel(nn.Module):
     def _init_weights(self, module: nn.Module) -> None:
         std = self.config.initializer_range
         if isinstance(module, nn.Linear):
+            # 保持 HF 风格的简单正态初始化，后续如需按层缩放残差可在这里集中调整。
             module.weight.data.normal_(mean=0.0, std=std)
             if module.bias is not None:
                 module.bias.data.zero_()
@@ -340,12 +378,14 @@ class TinyLLMModel(TinyLLMPreTrainedModel):
     ) -> TinyLLMModelOutput:
         batch_size, seq_len = input_ids.shape
         if position_ids is None:
+            # 默认位置从 0 递增。显式 position_ids 预留给后续 KV cache、packing 或长上下文续训。
             position_ids = torch.arange(seq_len, device=input_ids.device).unsqueeze(0).expand(
                 batch_size, -1
             )
 
         hidden_states = self.embedding_dropout(self.embed_tokens(input_ids))
         cos, sin = self.rotary_emb(position_ids)
+        # mask 统一整理成 SDPA 可消费的 bool 形状 [batch, 1, query_len, key_len]。
         attention_mask = self._prepare_attention_mask(
             attention_mask=attention_mask,
             seq_len=seq_len,
@@ -373,6 +413,7 @@ class TinyLLMModel(TinyLLMPreTrainedModel):
 
         router_aux_loss = None
         if router_aux_losses:
+            # 多个 MoE 层的 aux loss 直接求和；系数已经在每层 MoE 内部乘过。
             router_aux_loss = torch.stack(router_aux_losses).sum()
 
         return TinyLLMModelOutput(
@@ -387,6 +428,8 @@ class TinyLLMModel(TinyLLMPreTrainedModel):
         seq_len: int,
         device: torch.device,
     ) -> Tensor:
+        # causal_mask: [1, 1, seq_len, seq_len]，True 表示当前位置可以看见该 key。
+        # 下三角保证 token 只能看见自己和历史 token。
         causal_mask = torch.tril(
             torch.ones(seq_len, seq_len, device=device, dtype=torch.bool)
         )[None, None, :, :]
@@ -394,6 +437,8 @@ class TinyLLMModel(TinyLLMPreTrainedModel):
             return causal_mask
         if attention_mask.dim() != 2:
             raise ValueError("attention_mask must have shape [batch, seq_len]")
+        # attention_mask: [batch, seq_len]，通常 1 表示有效 token，0 表示 padding。
+        # 扩展成 key 维度 mask 后与 causal_mask 相与，得到最终可见区域。
         key_padding_mask = attention_mask[:, None, None, :].to(dtype=torch.bool)
         return causal_mask & key_padding_mask
 
@@ -428,6 +473,8 @@ class TinyLLMForCausalLM(TinyLLMPreTrainedModel):
 
         loss = None
         if labels is not None:
+            # 自回归语言模型预测下一个 token：位置 t 的 logits 对齐 labels[t + 1]。
+            # labels 中的 -100 会被 cross_entropy 忽略，便于后续 padding/packing。
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
             loss = F.cross_entropy(
@@ -436,6 +483,7 @@ class TinyLLMForCausalLM(TinyLLMPreTrainedModel):
                 ignore_index=-100,
             )
             if outputs.router_aux_loss is not None:
+                # MoE 辅助损失加入主 LM loss，使路由器在普通训练 loop 中也能收到梯度。
                 loss = loss + outputs.router_aux_loss
 
         return TinyLLMCausalLMOutput(
