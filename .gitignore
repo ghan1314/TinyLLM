@@ -11,3 +11,7 @@ dist/
 outputs/
 data/
 *.log
+AGENTS.md
+AGENT.md
+CODEX.md
+codex-progress.md
