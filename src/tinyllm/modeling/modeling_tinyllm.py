@@ -194,8 +194,8 @@ class TinyLLMMLP(nn.Module):
         self.dropout = nn.Dropout(config.resid_dropout)
 
     def forward(self, hidden_states: Tensor) -> Tensor:
-        hidden_states = self.gate_proj(hidden_states)
-        hidden_states = F.silu(hidden_states) * self.up_proj(hidden_states)
+        gate_states = self.gate_proj(hidden_states)
+        hidden_states = F.silu(gate_states) * self.up_proj(hidden_states)
         hidden_states = self.down_proj(hidden_states)
         return self.dropout(hidden_states)
 

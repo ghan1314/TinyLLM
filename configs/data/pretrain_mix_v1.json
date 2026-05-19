@@ -1,0 +1,246 @@
+{
+  "version": "pretrain_mix_v1",
+  "name": "TinyLLM Pretraining Data Mix v1",
+  "unit": "tokens_after_cleaning_dedup_filtering",
+  "language_positioning": "Chinese-priority bilingual with English, code, math, long-document, and small multilingual coverage.",
+  "total_weight": 100,
+  "buckets": [
+    {
+      "id": "zh_general_web",
+      "name": "Chinese general web",
+      "weight": 24,
+      "language": "zh",
+      "category": "general_web",
+      "description": "News, encyclopedia-like pages, blogs, long forum posts, and general knowledge web pages.",
+      "examples": ["news", "encyclopedic web", "blogs", "forums", "general knowledge pages"],
+      "required_filters": [
+        "language_id",
+        "duplicate_ratio_filter",
+        "boilerplate_ad_filter",
+        "low_information_density_filter",
+        "pii_filter",
+        "benchmark_contamination_filter"
+      ]
+    },
+    {
+      "id": "zh_education_knowledge",
+      "name": "Chinese education, knowledge, and encyclopedia",
+      "weight": 16,
+      "language": "zh",
+      "category": "education_knowledge",
+      "description": "Textbook-style content, popular science, encyclopedic writing, course materials, and explanatory content.",
+      "examples": ["textbook-like text", "popular science", "encyclopedia", "course materials", "explanatory articles"],
+      "required_filters": [
+        "language_id",
+        "duplicate_ratio_filter",
+        "low_information_density_filter",
+        "pii_filter",
+        "benchmark_contamination_filter"
+      ]
+    },
+    {
+      "id": "zh_books_longform",
+      "name": "Chinese books and long-form documents",
+      "weight": 8,
+      "language": "zh",
+      "category": "books_longform",
+      "description": "Long articles, public books, reports, and coherent long documents.",
+      "examples": ["long articles", "public books", "reports", "long-form documents"],
+      "required_filters": [
+        "language_id",
+        "license_filter",
+        "document_length_filter",
+        "near_duplicate_filter",
+        "pii_filter",
+        "benchmark_contamination_filter"
+      ]
+    },
+    {
+      "id": "zh_professional_qa_community",
+      "name": "Chinese professional, QA, and community",
+      "weight": 4,
+      "language": "zh",
+      "category": "professional_qa_community",
+      "description": "Technical QA, vertical-domain articles, and high-quality experience-based answers.",
+      "examples": ["technical QA", "vertical-domain articles", "expert answers", "experience posts"],
+      "required_filters": [
+        "language_id",
+        "duplicate_ratio_filter",
+        "low_information_density_filter",
+        "pii_filter",
+        "benchmark_contamination_filter"
+      ]
+    },
+    {
+      "id": "en_general_web",
+      "name": "English general web",
+      "weight": 12,
+      "language": "en",
+      "category": "general_web",
+      "description": "High-quality web text similar to FineWeb and FineWeb-Edu sources.",
+      "examples": ["FineWeb-style pages", "FineWeb-Edu-style pages", "blogs", "general knowledge pages"],
+      "required_filters": [
+        "language_id",
+        "duplicate_ratio_filter",
+        "boilerplate_ad_filter",
+        "low_information_density_filter",
+        "pii_filter",
+        "benchmark_contamination_filter"
+      ]
+    },
+    {
+      "id": "en_education_knowledge",
+      "name": "English education, knowledge, and encyclopedia",
+      "weight": 8,
+      "language": "en",
+      "category": "education_knowledge",
+      "description": "Educational web pages, Wikipedia/reference-style text, tutorials, and explanatory content.",
+      "examples": ["educational web", "Wikipedia/reference", "tutorials", "explanatory articles"],
+      "required_filters": [
+        "language_id",
+        "duplicate_ratio_filter",
+        "low_information_density_filter",
+        "pii_filter",
+        "benchmark_contamination_filter"
+      ]
+    },
+    {
+      "id": "en_books_longform",
+      "name": "English books and long-form documents",
+      "weight": 4,
+      "language": "en",
+      "category": "books_longform",
+      "description": "Books, long-form documents, essays, and other coherent long text.",
+      "examples": ["books", "long-form documents", "essays"],
+      "required_filters": [
+        "language_id",
+        "license_filter",
+        "document_length_filter",
+        "near_duplicate_filter",
+        "pii_filter",
+        "benchmark_contamination_filter"
+      ]
+    },
+    {
+      "id": "en_academic_technical",
+      "name": "English academic and technical documents",
+      "weight": 4,
+      "language": "en",
+      "category": "academic_technical",
+      "description": "arXiv/PDF-like documents, technical reports, and paper body text.",
+      "examples": ["arXiv-like text", "PDF-like documents", "technical reports", "paper body text"],
+      "required_filters": [
+        "language_id",
+        "license_filter",
+        "pdf_extraction_quality_filter",
+        "reference_boilerplate_filter",
+        "pii_filter",
+        "benchmark_contamination_filter"
+      ]
+    },
+    {
+      "id": "code_and_docs",
+      "name": "Code and code documentation",
+      "weight": 10,
+      "language": "code",
+      "category": "code",
+      "description": "Source code and code documentation across selected programming languages.",
+      "examples": ["Python", "JavaScript", "TypeScript", "Java", "C", "C++", "Go", "Rust", "Shell", "SQL", "Markdown docs"],
+      "required_filters": [
+        "license_filter",
+        "generated_file_filter",
+        "repository_dedup",
+        "file_dedup",
+        "long_file_split",
+        "secret_filter",
+        "benchmark_contamination_filter"
+      ]
+    },
+    {
+      "id": "math_stem_reasoning",
+      "name": "Math, STEM, and reasoning text",
+      "weight": 7,
+      "language": "mixed",
+      "category": "math_stem_reasoning",
+      "description": "Math solutions, proofs, STEM textbooks, and verifiable reasoning text in pretraining format rather than chat format.",
+      "examples": ["math solutions", "proofs", "STEM textbooks", "verifiable reasoning text"],
+      "required_filters": [
+        "language_id",
+        "format_filter_pretraining_not_chat",
+        "duplicate_ratio_filter",
+        "quality_filter",
+        "benchmark_contamination_filter"
+      ]
+    },
+    {
+      "id": "other_multilingual",
+      "name": "Other multilingual data",
+      "weight": 3,
+      "language": "multilingual",
+      "category": "multilingual",
+      "description": "Small amount of generalization data from Japanese, Korean, French, Spanish, German, and other languages.",
+      "examples": ["Japanese", "Korean", "French", "Spanish", "German"],
+      "required_filters": [
+        "language_id",
+        "duplicate_ratio_filter",
+        "low_information_density_filter",
+        "pii_filter",
+        "benchmark_contamination_filter"
+      ]
+    }
+  ],
+  "data_rules": [
+    "Weights apply after cleaning, deduplication, quality filtering, and tokenization.",
+    "Do not mix SFT, chat, or instruction data into base pretraining data.",
+    "Each bucket must record source, license, cleaning version, token count, filtering ratio, deduplication ratio, and final shard manifest.",
+    "Chinese and English web buckets must run language identification, duplicate-ratio filtering, boilerplate/ad filtering, low-information-density filtering, PII filtering, and benchmark-contamination filtering.",
+    "Code data must run license filtering, long-file splitting, duplicate repository/file filtering, generated-file filtering, secret filtering, and benchmark-contamination filtering."
+  ],
+  "training_stages": [
+    {
+      "id": "s1_broad_pretrain",
+      "name": "S1 broad pretrain",
+      "description": "Use this default mix for the 64M trial model first, then for the 120M-130M main MVP model."
+    },
+    {
+      "id": "s2_knowledge_reasoning_continue_pretrain",
+      "name": "S2 knowledge/reasoning continue pretrain",
+      "description": "After the base run is stable, optionally raise code, math, STEM, and academic/technical data to 25%-30% combined and reduce general web data."
+    },
+    {
+      "id": "s3_long_context_continue_pretrain",
+      "name": "S3 long-context continue pretrain",
+      "description": "When extending from 4K to 8K context, raise books, papers, reports, and long-web data to train long-document continuity."
+    }
+  ],
+  "sources_for_rationale": [
+    {
+      "name": "Qwen3 blog",
+      "url": "https://qwenlm.github.io/blog/qwen3/"
+    },
+    {
+      "name": "LLaMA paper page",
+      "url": "https://ai.meta.com/research/publications/llama-open-and-efficient-foundation-language-models/"
+    },
+    {
+      "name": "Dolma",
+      "url": "https://allenai.github.io/dolma/"
+    },
+    {
+      "name": "DCLM",
+      "url": "https://github.com/mlfoundations/dclm"
+    },
+    {
+      "name": "FineWeb-Edu",
+      "url": "https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu"
+    },
+    {
+      "name": "The Stack v2",
+      "url": "https://huggingface.co/datasets/bigcode/the-stack-v2"
+    },
+    {
+      "name": "ChineseWebText2.0",
+      "url": "https://huggingface.co/datasets/CASIA-LM/ChineseWebText2.0"
+    }
+  ]
+}

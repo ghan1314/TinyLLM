@@ -9,7 +9,7 @@ env/
 build/
 dist/
 outputs/
-data/
+/data/
 *.log
 AGENTS.md
 AGENT.md
