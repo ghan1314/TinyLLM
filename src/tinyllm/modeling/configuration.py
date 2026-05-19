@@ -12,7 +12,7 @@ from typing import Any
 class TinyLLMConfig:
     """HF-style configuration object for TinyLLM decoder-only language models."""
 
-    vocab_size: int = 151_936
+    vocab_size: int = 32_768
     hidden_size: int = 768
     intermediate_size: int = 2_048
     num_hidden_layers: int = 12
@@ -31,8 +31,8 @@ class TinyLLMConfig:
     use_qk_norm: bool = True
     use_cache: bool = True
     pad_token_id: int | None = None
-    bos_token_id: int = 151_643
-    eos_token_id: int = 151_645
+    bos_token_id: int = 1
+    eos_token_id: int = 2
 
     # MoE is disabled by default. Set num_experts > 0 to replace dense MLP blocks.
     num_experts: int = 0
@@ -103,6 +103,10 @@ class TinyLLMConfig:
             raise ValueError("embedding_dropout must be in [0, 1)")
         if self.hidden_act != "silu":
             raise ValueError("TinyLLM currently supports only hidden_act='silu'")
+        if self.bos_token_id < 0 or self.eos_token_id < 0:
+            raise ValueError("special token ids must be non-negative")
+        if self.bos_token_id >= self.vocab_size or self.eos_token_id >= self.vocab_size:
+            raise ValueError("special token ids must be smaller than vocab_size")
         if self.num_experts < 0:
             raise ValueError("num_experts cannot be negative")
         if self.num_experts == 0 and self.moe_layers:
